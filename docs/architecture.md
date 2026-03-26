@@ -1,21 +1,18 @@
-# What is an Agent-to-Agent (A2A) Architecture?
+# System Architecture 
 
-*(Explain it to me like I'm 5)*
+**FactSet Agent-to-Agent (A2A) Routing Proxy**
 
-Imagine you are playing at a giant playground (this is **Google Vertex AI**). You want a special toy hidden inside a locked vault (this is **FactSet's Data**). However, you aren't big enough to reach the lock, and Vertex AI doesn't know the password to the vault.
+The Gemini Agent Builder natively prefers executing explicit, low-latency REST HTTP handshakes directly against APIs. However, complex quantitative financial executions via the FactSet Market Context Protocol (MCP) frequently run longer than 20 seconds. 
 
-So, Vertex AI builds an invisible walkie-talkie and calls a **Special Helper Robot** (this is our **Cloud Run A2A Proxy**). 
-1. You hand your "ID Card" (OAuth Token) to Vertex AI. 
-2. Vertex AI talks into the walkie-talkie (A2A stream) and says, "Hey Robot, here is the kid's ID card and their question!"
-3. The Robot takes your ID card, walks up to the locked FactSet vault, opens it, reads the data, and whispers the answer back over the walkie-talkie so Vertex AI can tell you!
+By default, the Vertex UI silently terminates active sockets that do not continuously stream data, resulting in a **Proxy Timeout**.
 
-This "walkie-talkie" system is called **Agent-to-Agent (A2A)**.
+To mitigate this, we construct a dedicated **Cloud Run A2A Proxy** running the official [Google Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit). This middleware mathematically prevents disconnects by catching the payload and generating continuous keep-alive heartbeats directly back up the payload chain.
 
 ---
 
-## The A2A Conversation Flow
+## 🏗 The Multi-Agent Pipeline
 
-Here is exactly how the conversation happens under the hood when a user asks a question in the Gemini Enterprise UI:
+The native `A2aStarletteApplication` framework orchestrates user connections through the following sequential pipeline:
 
 ```mermaid
 sequenceDiagram
@@ -29,22 +26,32 @@ sequenceDiagram
     end
     
     User->>Vertex AI (Enterprise): "What companies did Apple buy?"
-    Note over Vertex AI (Enterprise): Vertex grabs the user's<br>secure Identity Token
-    Vertex AI (Enterprise)->>Cloud Run (A2A Proxy): Forward Question + Token (Webhook)
-    Note over Cloud Run (A2A Proxy): The Native ADK catches<br>the token statelessly!
-    Cloud Run (A2A Proxy)->>FactSet Data (MCP): Ask for data using the User's Token
-    FactSet Data (MCP)-->>Cloud Run (A2A Proxy): Returns raw financial JSON
-    Note over Cloud Run (A2A Proxy): Gemini generates a<br>beautifully formatted answer.
-    Cloud Run (A2A Proxy)-->>Vertex AI (Enterprise): Streams the final text back!
-    Vertex AI (Enterprise)-->>User: Displays answer in Chat UI
+    Note over Vertex AI (Enterprise): Vertex extracts the native<br>Enterprise User Identity Token
+    Vertex AI (Enterprise)->>Cloud Run (A2A Proxy): Webhook (Identity + Schema)
+    Note over Cloud Run (A2A Proxy): Middlewares capture tokens<br>statelessly into AnyIO Contexts!
+    Cloud Run (A2A Proxy)->>FactSet Data (MCP): Invoke REST via User Bearer Token
+    FactSet Data (MCP)-->>Cloud Run (A2A Proxy): JSON Financial Aggregation (200 OK)
+    Note over Cloud Run (A2A Proxy): Gemini 2.5 Flash synthesizes<br>the payload into Markdown.
+    Cloud Run (A2A Proxy)-->>Vertex AI (Enterprise): Artifact Stream via Server-Sent Events
+    Vertex AI (Enterprise)-->>User: Renders formatted UI display!
 ```
 
-## Why couldn't we just connect Vertex AI directly?
+---
 
-By default, Vertex AI likes to connect directly to standard APIs. However, if a question takes too long (like mathematically calculating 15 years of M&A acquisitions), the Vertex UI gets bored waiting and silently "hangs up" the phone (this is called a Proxy Timeout). 
+## 🔑 Stateless Identity Abstraction
 
-By building our own **Cloud Run A2A Proxy** using the official [Google Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit), our helper robot is smart enough to send continuous "keep-alive" heartbeats back up the walkie-talkie line. This prevents Vertex AI from ever hanging up on us, even if FactSet takes 45 seconds to crunch the numbers!
+Because Cloud Run containers explicitly load identical `.env` bindings globally for all parallel traffic requests, hardcoding User Authentication logic into the `ADK` engine compiles a fatal vulnerability where User A theoretically commands User B's FactSet connection.
 
-## Technical Implementation (For Developers)
+- 🪝 **AuthorizationContextMiddleware**: Fast-fail interceptor that parses incoming Vertex HTTP Webhooks, pulling dynamic Bearer identity tokens out of the header natively.
+- 📦 **ContextVar Mutability**: A secure AnyIO memory structure (`sf_token_var`) temporarily holds the token, actively isolating scope per-request across identical thread loops.
+- 🔄 **Patched Get Tools**: Prior to resolving a REST execution payload against FactSet, the custom `gemini_agent.py` hook scans the underlying memory block, grabs the isolated User key, and strictly assigns it to the `Authorization` header map exactly once!
 
-For deep-dive documentation into how the Native `google-adk` Python library parses this token statelessly and how we injected strict `NO PYTHON` instructions to prevent Gemini from hallucinating code, please continue onto the [Deployment Guide](./deployment.md) and [Debugging Guide](./debugging.md).
+---
+
+## 🛑 Tool Hallucination Shielding
+
+When large language models like `Gemini 2.5 Flash` encounter multi-layered nested JSON execution endpoints requiring logical iteration (such as fetching 15 iterations of yearly target data), they inherently default toward **generative code execution plugins**. 
+
+Instead of formatting traditional JSON mapping protocols, the Agent embeds explicit, executable Python logic (e.g., `import datetime, uuid`) into the FactSet Array string inside Vertex! The UI engine violently crashes when attempting to parse non-JSON arrays (`Malformed function call`).
+
+We natively restrict this vulnerability via strict `NO PYTHON` explicit markers engineered strictly into the Agent Persona prompts!
