@@ -25,6 +25,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --source . \
   --project="$PROJECT_ID" \
   --region="$REGION" \
+  --set-env-vars="GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${REGION},CLIENT_ID=${CLIENT_ID},CLIENT_SECRET=${CLIENT_SECRET},AUTH_URI=${AUTH_URI},SCOPES=${SCOPES},TOKEN_URI=${TOKEN_URI},WELL_KNOWN_URI=${WELL_KNOWN_URI}" \
   --allow-unauthenticated \
   --quiet || { echo "Deployment failed on Cloud Run step."; exit 1; }
 
