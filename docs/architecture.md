@@ -1,32 +1,50 @@
-# FactSet Native ADK Context Architecture
+# What is an Agent-to-Agent (A2A) Architecture?
 
-This document maps out the internal structural design of the FactSet Gemini Enterprise integration, focusing entirely on how the Google Agent Development Kit (ADK) interfaces with Vertex AI without breaking Server-Sent Events (SSE) constraints.
+*(Explain it to me like I'm 5)*
 
-## 1. Native A2A Wrapper vs Legacy Webhooks
+Imagine you are playing at a giant playground (this is **Google Vertex AI**). You want a special toy hidden inside a locked vault (this is **FactSet's Data**). However, you aren't big enough to reach the lock, and Vertex AI doesn't know the password to the vault.
 
-In experimental proxy designs, mapping the LLM to the Vertex proxy meant manually instantiating `agent_executor.py` middleware loops to reconstruct A2A payloads. Because manual loops frequently misalign with internal Vertex serialization rules (such as placing final chat responses into disjoint `TaskStatusUpdateEvent` structures instead of mapping them identically to structural stream artifacts), Vertex Agent Builder natively "froze" or "hung."
+So, Vertex AI builds an invisible walkie-talkie and calls a **Special Helper Robot** (this is our **Cloud Run A2A Proxy**). 
+1. You hand your "ID Card" (OAuth Token) to Vertex AI. 
+2. Vertex AI talks into the walkie-talkie (A2A stream) and says, "Hey Robot, here is the kid's ID card and their question!"
+3. The Robot takes your ID card, walks up to the locked FactSet vault, opens it, reads the data, and whispers the answer back over the walkie-talkie so Vertex AI can tell you!
 
-**Solution:** The system now entirely relies on the Google ADK's native `A2aStarletteApplication`. The native engine binds inherently to Gemini's internal byte-stream, ensuring that long-running operations (>20 seconds) from quantitative FactSet endpoints properly buffer the socket instead of timing out silently.
+This "walkie-talkie" system is called **Agent-to-Agent (A2A)**.
 
-## 2. Stateless OAuth 2.0 Injection Protocol
+---
 
-A massive bottleneck of standard ADK Python implementations is that agents and `MCPToolset` tools statically compile and spin up exactly once during the global container boot cycle. Vertex AI passes dynamic, per-request `Authorization` Bearer Tokens in the HTTP headers representing the actively logged-in enterprise user.
+## The A2A Conversation Flow
 
-If the container compiles statically, you cannot hard-code a static token. 
+Here is exactly how the conversation happens under the hood when a user asks a question in the Gemini Enterprise UI:
 
-### Core Workflow:
+```mermaid
+sequenceDiagram
+    participant User
+    box Google Cloud
+    participant Vertex AI (Enterprise)
+    participant Cloud Run (A2A Proxy)
+    end
+    box External
+    participant FactSet Data (MCP)
+    end
+    
+    User->>Vertex AI (Enterprise): "What companies did Apple buy?"
+    Note over Vertex AI (Enterprise): Vertex grabs the user's<br>secure Identity Token
+    Vertex AI (Enterprise)->>Cloud Run (A2A Proxy): Forward Question + Token (Webhook)
+    Note over Cloud Run (A2A Proxy): The Native ADK catches<br>the token statelessly!
+    Cloud Run (A2A Proxy)->>FactSet Data (MCP): Ask for data using the User's Token
+    FactSet Data (MCP)-->>Cloud Run (A2A Proxy): Returns raw financial JSON
+    Note over Cloud Run (A2A Proxy): Gemini generates a<br>beautifully formatted answer.
+    Cloud Run (A2A Proxy)-->>Vertex AI (Enterprise): Streams the final text back!
+    Vertex AI (Enterprise)-->>User: Displays answer in Chat UI
+```
 
-1. **The Fast-Fail Middleware**:
-The `main.py` Starlette router runs an overriding class called `AuthorizationContextMiddleware`. The literal microsecond a webhook arrives, this middleware parses the `Authorization` header and assigns the actual 30-minute transient Bearer Token into an asynchronous `ContextVar` (`sf_token_var`).
-2. **Context Persistence**:
-Because AnyIO task execution perfectly maintains context boundaries, the static `gemini_agent.py` was structurally modified so that its `patched_get_tools()` hook fires. This hook looks at the memory context, pulls the user's explicit token out, and assigns it instantly to the `_mcp_session_manager._connection_params.headers` before invoking the REST payload!
+## Why couldn't we just connect Vertex AI directly?
 
-## 3. Tool Calling vs Python Code Hallucinations
+By default, Vertex AI likes to connect directly to standard APIs. However, if a question takes too long (like mathematically calculating 15 years of M&A acquisitions), the Vertex UI gets bored waiting and silently "hangs up" the phone (this is called a Proxy Timeout). 
 
-When Vertex AI Agent Builder queries tools with heavily flattened OpenAPI schemas, it naturally struggles to resolve parameter constraints. By default, Gemini 2.5 Flash engines use **Code Execution** plugins dynamically.
+By building our own **Cloud Run A2A Proxy** using the official [Google Agent Development Kit (ADK)](https://github.com/GoogleCloudPlatform/agent-development-kit), our helper robot is smart enough to send continuous "keep-alive" heartbeats back up the walkie-talkie line. This prevents Vertex AI from ever hanging up on us, even if FactSet takes 45 seconds to crunch the numbers!
 
-If a user asked "Who did TSLA acquire over the last 15 years", the LLM would see the `FactSet_MergersAcquisitions` JSON tool mapping `startDate` as a generic string and natively bypass JSON completely by writing a 20-line standalone Python loop logic script directly inside the A2A endpoint payload to execute `timedelta(days=364)` calculations! Vertex inherently crashes attempting to parse raw Python out of a REST argument array (`Malformed function call`).
+## Technical Implementation (For Developers)
 
-To secure this architecture:
-* Gemini 2.5 Flash is strictly restricted within the Persona to absolutely rely on native JSON execution. 
-* A structural `NO PYTHON` exclusion string prevents proxy bypass instructions natively.
+For deep-dive documentation into how the Native `google-adk` Python library parses this token statelessly and how we injected strict `NO PYTHON` instructions to prevent Gemini from hallucinating code, please continue onto the [Deployment Guide](./deployment.md) and [Debugging Guide](./debugging.md).

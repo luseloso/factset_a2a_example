@@ -1,29 +1,39 @@
-# FactSet Analyst Agent (Native ADK)
+# FactSet Analyst Agent (Google Native A2A)
 
-This repository contains the definitive, highly optimized codebase for integrating FactSet's Market Context Protocol (MCP) securely into the **Google Vertex AI Gemini Enterprise** workspace via a remote Agent-to-Agent (A2A) Cloud Run proxy.
+Welcome to the definitive **FactSet Market Context Protocol (MCP)** integration for Google Cloud! 
 
-Unlike traditional custom FastAPI proxy implementations, this system is explicitly architected around the official **Agent Development Kit (ADK)** by Google. It securely and statelessly manages Identity-Aware User Tokens (`sf_token_var`) directly inside a fast-fail proxy boundary to prevent Server-Sent Event (SSE) freezing timeouts.
+This repository allows you to quickly deploy a "Middleman Proxy" (an Agent-to-Agent or A2A framework) onto Google Cloud Run. This proxy directly bridges the **Google Vertex AI Gemini Enterprise API** to the **FactSet Financial Data APIs** without timing out on large financial queries!
 
-## Deep Dive Documentation
+## What is this? (Explain like I'm 5) 🧠
+Vertex AI is extremely smart, but it doesn't natively speak "FactSet." Furthermore, Enterprise APIs require knowing precisely *who* is asking the question (User Identity). 
 
-To understand the core structural mechanisms enabling this Enterprise integration, please review the highly detailed architectural breakdown documents generated dynamically inside the [`/docs/`](./docs/) repository folder:
+This codebase builds an invisible, native helper robot on **Google Cloud Run**. 
+When you ask Gemini a question, Vertex securely hands your Identity Token to our helper robot. Our robot turns around, takes your Token, unlocks FactSet's vault, pulls the data, and writes out a beautiful summary sent straight back to your Gemini window! 
 
-1. **[Architecture Guidelines](./docs/architecture.md)**
-   Delves into the complex backend logic explaining how the ADK A2A event stream acts as a native buffer, effectively halting Vertex UI proxy timeouts for quantitative data queries exceeding >20 seconds. It explicitly maps out the `NO PYTHON` hallucination constraints inside the LLM tool schemas.
-   
-2. **[Infrastructure Components](./docs/deployment.md)**
-   Walks you step-by-step through configuring your `Google Cloud Project` identity bindings, and explicitly unpackages the unique 2-step registration dependency orchestrating Cloud Run URLs seamlessly into Gemini Agent Builder.
-   
+Learn more about this "walkie-talkie" architecture here: **[Read the Architecture ELI5 Guide](./docs/architecture.md)**!
+
+## Documentation Directory 📚
+
+We have structured the documentation to guide you from understanding what an A2A proxy does all the way to actively debugging Cloud Run logs:
+
+1. **[Architecture & Diagram (Start Here!)](./docs/architecture.md)**
+   A simple visually mapped guide explaining what an A2A Proxy is and how it solves Identity and Timeout issues between FactSet and Google.
+2. **[Infrastructure & Deployment](./docs/deployment.md)**
+   Walks you step-by-step through customizing your `.env` abstractions and explains how our Bash shell scripts magically connect Vertex AI to Cloud Run endpoints automatically.
 3. **[Execution Debugging & Tracing](./docs/debugging.md)**
-   Explains rigorously how to observe the raw Cloud Run event stream outputs to perfectly verify authentication hooks, mitigate `Malformed function call` payload anomalies, and successfully trace TaskGroup exceptions natively mapping back to Gemini.
+   Explains rigorously how to observe raw Cloud Run logs from inside your own GCP container, helping you debug missing APIs or 409 Authorization errors.
 
-## Quickstart
+## Quickstart Deployment 🚀
 
-If you possess a `.env` file correctly mapping your `GOOGLE_CLOUD_PROJECT` identifier and your Vertex `GEMINI_ENTERPRISE_APP_ID`:
+To rapidly deploy this repository to your own Google Cloud:
+
+1. Duplicate `.env.example` into `.env` and fill all missing secrets (Client IDs).
+2. Configure your isolated `AGENT_SERVICE_NAME` naming conventions.
+3. Simply execute the automation script on your terminal:
 
 ```bash
-# Standup entire Cloud Run proxy natively and register your Agent:
+# Standup the entire Cloud Run proxy natively and register your Agent:
 bash ./deploy_and_register.sh
 ```
 
-**Testing your agent:** Provide dynamic queries such as _"What were the largest M&A acquisitions executed by TSLA over the last 15 years?"_ natively inside your Vertex Workspace UI to trigger FactSet quantitative extraction!
+**Testing your agent:** Go into your Vertex UI workspace and explicitly ask: _"What were the largest M&A acquisitions executed by TSLA over the last 15 years?"_ The FactSet MCP will trigger automatically!
