@@ -1,0 +1,11 @@
+
+a2a-sdk[http-server]
+asyncclick
+google-adk
+google-cloud-aiplatform
+google-generativeai
+gunicorn
+itsdangerous
+mcp
+python-dotenv
+uvicorn
