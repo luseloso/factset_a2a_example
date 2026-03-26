@@ -19,7 +19,12 @@ NAME_DESC=${AGENT_DISPLAY_NAME:-"FactSet Agent v7"}
 echo "====================================================="
 echo "1. Deploying FactSet Agent to Cloud Run..."
 echo "====================================================="
-bash deploy.sh "$PROJECT_ID" "$SERVICE_NAME" || { echo "Deployment failed"; exit 1; }
+gcloud run deploy "$SERVICE_NAME" \
+  --source . \
+  --project="$PROJECT_ID" \
+  --region="$REGION" \
+  --allow-unauthenticated \
+  --quiet || { echo "Deployment failed on Cloud Run step."; exit 1; }
 
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')
